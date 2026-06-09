@@ -74,18 +74,24 @@
 </div>
 
 <script>
-    // COLLE ICI TON URL APPS SCRIPT (CONSERVE LES GUILLEMETS)
+    // TON URL APPS SCRIPT
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwZBqb3NuQ8P3IPCzx6EKlM8o8Re9NrZPPVnov02VoP-tpEHGCQ_AZU_1Dy2uegvVtV_A/exec"; 
     
     let currentQuiz = null;
+    let isProcessing = false; // Empêche le double-clic accidentel
 
     async function fetchQuestion() {
+        if (isProcessing) return;
+        
         document.getElementById('loading').style.display = 'block';
         document.getElementById('quiz-content').style.display = 'none';
         document.getElementById('feedback').innerText = '';
         
         try {
-            const response = await fetch(`${SCRIPT_URL}?action=getQuestion`);
+            // ANTI-CACHE : On ajoute un "timestamp" (la date en millisecondes) à la fin de l'URL.
+            // Cela force le téléphone et la montre à faire une vraie nouvelle requête à chaque fois.
+            const antiCache = new Date().getTime();
+            const response = await fetch(`${SCRIPT_URL}?action=getQuestion&v=${antiCache}`);
             currentQuiz = await response.json();
             
             if(currentQuiz.error) {
@@ -108,12 +114,17 @@
             document.getElementById('loading').style.display = 'none';
             document.getElementById('quiz-content').style.display = 'block';
         } catch (error) {
-            document.getElementById('loading').innerText = "Erreur réseau";
+            document.getElementById('loading').innerText = "Erreur réseau. Réenclenchement...";
             console.error(error);
+            // En cas d'erreur réseau passagère, on réessaye automatiquement après 2 secondes
+            setTimeout(fetchQuestion, 2000);
         }
     }
 
     async function verifyAnswer(selected) {
+        if (isProcessing) return; // Sécurité si l'utilisateur clique deux fois trop vite
+        isProcessing = true;
+
         const isCorrect = (selected === currentQuiz.correcte);
         const feedbackEl = document.getElementById('feedback');
         
@@ -125,15 +136,22 @@
             feedbackEl.style.color = "#db4437";
         }
         
-        // Désactiver les boutons pendant la validation pour éviter le spam
+        // Désactiver visuellement tous les boutons
         document.querySelectorAll('.btn').forEach(b => b.disabled = true);
         
-        // Envoi asynchrone du résultat vers le Google Sheet (ne bloque pas l'utilisateur)
-        fetch(`${SCRIPT_URL}?action=submitResult&mot=${encodeURIComponent(currentQuiz.mot)}&reussite=${isCorrect}`)
-        .catch(err => console.error("Erreur de sauvegarde:", err));
+        try {
+            // On attend que Google Sheets enregistre la réponse avant de passer à la suite
+            const antiCache = new Date().getTime();
+            await fetch(`${SCRIPT_URL}?action=submitResult&mot=${encodeURIComponent(currentQuiz.mot)}&reussite=${isCorrect}&v=${antiCache}`);
+        } catch (err) {
+            console.error("Erreur de sauvegarde synchrone :", err);
+        }
         
-        // Passage automatique au mot suivant après 2 secondes
-        setTimeout(fetchQuestion, 2000);
+        // On libère le verrou et on passe au mot suivant après 2 secondes
+        setTimeout(() => {
+            isProcessing = false;
+            fetchQuestion();
+        }, 2000);
     }
 
     // Premier lancement automatique
