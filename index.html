@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Vocab Quiz</title>
+    <style>
+        /* Optimisation pour l'écran rond de la OnePlus Watch 3 (Wear OS) */
+        body {
+            margin: 0;
+            padding: 24px;
+            background-color: #000;
+            color: #fff;
+            font-family: system-ui, -apple-system, sans-serif;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        #quiz-container {
+            width: 100%;
+            max-width: 280px; /* Aligné sur la zone sûre d'un écran rond */
+        }
+        h1 {
+            font-size: 1.4rem;
+            margin: 0 0 8px 0;
+            color: #4285F4;
+            text-transform: capitalize;
+        }
+        .btn {
+            background-color: #1a1a1a;
+            color: white;
+            border: 1.5px solid #333;
+            padding: 10px 14px;
+            margin: 4px 0;
+            width: 100%;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background-color 0.1s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .btn:active {
+            background-color: #4285F4;
+            border-color: #4285F4;
+        }
+        #feedback {
+            margin-top: 8px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            height: 20px;
+        }
+        #loading {
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+<div id="quiz-container">
+    <div id="loading">Chargement du mot...</div>
+    <div id="quiz-content" style="display:none;">
+        <h1 id="word-title">Word</h1>
+        <div id="options-box"></div>
+        <div id="feedback"></div>
+    </div>
+</div>
+
+<script>
+    // COLLE ICI TON URL APPS SCRIPT (CONSERVE LES GUILLEMETS)
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwZBqb3NuQ8P3IPCzx6EKlM8o8Re9NrZPPVnov02VoP-tpEHGCQ_AZU_1Dy2uegvVtV_A/exec"; 
+    
+    let currentQuiz = null;
+
+    async function fetchQuestion() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('quiz-content').style.display = 'none';
+        document.getElementById('feedback').innerText = '';
+        
+        try {
+            const response = await fetch(`${SCRIPT_URL}?action=getQuestion`);
+            currentQuiz = await response.json();
+            
+            if(currentQuiz.error) {
+                document.getElementById('loading').innerText = currentQuiz.error;
+                return;
+            }
+            
+            document.getElementById('word-title').innerText = currentQuiz.mot;
+            const optionsBox = document.getElementById('options-box');
+            optionsBox.innerHTML = '';
+            
+            currentQuiz.options.forEach(option => {
+                const button = document.createElement('button');
+                button.className = 'btn';
+                button.innerText = option;
+                button.onclick = () => verifyAnswer(option);
+                optionsBox.appendChild(button);
+            });
+            
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('quiz-content').style.display = 'block';
+        } catch (error) {
+            document.getElementById('loading').innerText = "Erreur réseau";
+            console.error(error);
+        }
+    }
+
+    async function verifyAnswer(selected) {
+        const isCorrect = (selected === currentQuiz.correcte);
+        const feedbackEl = document.getElementById('feedback');
+        
+        if (isCorrect) {
+            feedbackEl.innerText = "🎉 Bravo !";
+            feedbackEl.style.color = "#0f9d58";
+        } else {
+            feedbackEl.innerText = `❌ Rép : ${currentQuiz.correcte}`;
+            feedbackEl.style.color = "#db4437";
+        }
+        
+        // Désactiver les boutons pendant la validation pour éviter le spam
+        document.querySelectorAll('.btn').forEach(b => b.disabled = true);
+        
+        // Envoi asynchrone du résultat vers le Google Sheet (ne bloque pas l'utilisateur)
+        fetch(`${SCRIPT_URL}?action=submitResult&mot=${encodeURIComponent(currentQuiz.mot)}&reussite=${isCorrect}`)
+        .catch(err => console.error("Erreur de sauvegarde:", err));
+        
+        // Passage automatique au mot suivant après 2 secondes
+        setTimeout(fetchQuestion, 2000);
+    }
+
+    // Premier lancement automatique
+    fetchQuestion();
+</script>
+</body>
+</html>
